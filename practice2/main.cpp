@@ -11,7 +11,6 @@
 #include <stdexcept>
 #include <iostream>
 #include <chrono>
-#include <unordered_map>
 
 std::string to_string(std::string_view str)
 {
@@ -31,10 +30,17 @@ void glew_fail(std::string_view message, GLenum error)
 const char vertex_shader_source[] =
 R"(#version 330 core
 
-const vec2 VERTICES[3] = vec2[3](
-    vec2(0.0, 1.0),
-    vec2(-sqrt(0.75), -0.5),
-    vec2( sqrt(0.75), -0.5)
+const float a = 0.5;
+const float PI = 3.1415926535897932384626433832795;
+const vec2 VERTICES[8] = vec2[8](
+    vec2(0.0, 0.0),
+    vec2(a * cos(PI / 3.0), a * sin(PI / 3.0)),
+    vec2(- a * cos(PI / 3.0), a * sin(PI / 3.0)),
+    vec2(-a, 0.0),
+    vec2(- a * cos(PI / 3.0), - a * sin(PI / 3.0)),
+    vec2(a * cos(PI / 3.0), - a * sin(PI / 3.0)),
+    vec2(a, 0.0),
+    vec2(a * cos(PI / 3.0), a * sin(PI / 3.0))
 );
 
 const vec3 COLORS[3] = vec3[3](
@@ -43,12 +49,13 @@ const vec3 COLORS[3] = vec3[3](
     vec3(0.0, 0.0, 1.0)
 );
 
+uniform mat4 transform;
 out vec3 color;
 
 void main()
 {
     vec2 position = VERTICES[gl_VertexID];
-    gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = transform * vec4(position, 0.0, 1.0);
     color = COLORS[gl_VertexID];
 }
 )";
@@ -121,7 +128,6 @@ int main() try
 
     int width, height;
     SDL_GetWindowSize(window, &width, &height);
-
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -145,13 +151,32 @@ int main() try
     GLuint program = create_program(vertex_shader, fragment_shader);
 
     GLuint vao;
-    glGenVertexArrays(1, &vao);
+    glUseProgram(program);
+    
+    GLint transform_uniform = glGetUniformLocation(program, "transform");
+    glUniform1f(transform_uniform, 0.5);
+    
+    float time = 0.f;
+    float scale = 0.5;
+    float aspect_ratio;
 
-    std::unordered_map<SDL_Scancode, bool> key_down;
+    float x = 0;
+    float dx = 0;
+    
+    float y = 0;
+    float dy = 0;
+
+    float transform[16] = {
+        cos(time) * scale, sin(time) * scale, 0.0, 0.0, 
+        -sin(time) * scale, cos(time) * scale, 0.0, 0.0, 
+        0.0, 0.0, 0.0, 0.0, 
+        0.0, 0.0, 0.0, 1.0};
+    glGenVertexArrays(1, &vao);
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
     bool running = true;
+    
     while (running)
     {
         for (SDL_Event event; SDL_PollEvent(&event);) switch (event.type)
@@ -164,16 +189,39 @@ int main() try
             case SDL_WINDOWEVENT_RESIZED:
                 width = event.window.data1;
                 height = event.window.data2;
+                aspect_ratio = (float)width / (float)height;
                 glViewport(0, 0, width, height);
                 break;
             }
+            break; 
+        case SDL_KEYUP: 
+        case SDL_KEYDOWN: switch (event.key.keysym.scancode) {
+            case SDL_SCANCODE_UP: 
+                if (event.key.state == SDL_PRESSED)
+                    dy = 1;
+                else 
+                    dy = 0;
             break;
-        case SDL_KEYDOWN:
-            key_down[event.key.keysym.scancode] = true;
+            case SDL_SCANCODE_DOWN: 
+                if (event.key.state == SDL_PRESSED)
+                    dy = -1; 
+                else 
+                    dy = 0;
             break;
-        case SDL_KEYUP:
-            key_down[event.key.keysym.scancode] = false;
+            case SDL_SCANCODE_LEFT: 
+                if (event.key.state == SDL_PRESSED)
+                    dx = -1; 
+                else 
+                    dx = 0;
             break;
+            case SDL_SCANCODE_RIGHT: 
+                if (event.key.state == SDL_PRESSED)
+                    dx = 1;
+                else 
+                    dx = 0;
+            break;
+            default: break;
+        }
         }
 
         if (!running)
@@ -181,13 +229,29 @@ int main() try
 
         auto now = std::chrono::high_resolution_clock::now();
         float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
+        time += dt;        
+        
+        x += dx * dt / aspect_ratio;
+        y += dy * dt;
+        
+        transform[0] = cos(time) * scale / aspect_ratio; 
+        transform[1] = - sin(time) * scale / aspect_ratio;
+        
+        transform[3] = x;
+        
+        transform[4] = sin(time) * scale;
+        transform[5] = cos(time) * scale;
+
+        transform[7] = y;
+        
         last_frame_start = now;
 
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(program);
+        glUniformMatrix4fv(transform_uniform, 1, GL_TRUE, transform);
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 8);
 
         SDL_GL_SwapWindow(window);
     }

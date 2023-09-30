@@ -345,22 +345,10 @@ try
 
         float view[16] =
             {
-                2.f / (float)(width),
-                0.f,
-                0.f,
-                -1.f,
-                0.f,
-                -2.f / (float)(height),
-                0.f,
-                1.f,
-                0.f,
-                0.f,
-                1.f,
-                0.f,
-                0.f,
-                0.f,
-                0.f,
-                1.f,
+                2.f / (float)(width), 0.f,                    0.f, -1.f,
+                0.f,                 -2.f / (float)(height),  0.f,  1.f,
+                0.f,                  0.f,                    1.f,  0.f,
+                0.f,                  0.f,                    0.f,  1.f,
         };
 
         glUseProgram(program);

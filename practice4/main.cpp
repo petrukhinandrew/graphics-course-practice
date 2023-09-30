@@ -170,9 +170,30 @@ int main() try
     std::string project_root = PROJECT_ROOT;
     obj_data bunny = parse_obj(project_root + "/bunny.obj");
 
+    GLuint bunny_vao, bunny_vbo, bunny_ebo;
+    
+    glGenVertexArrays(1, &bunny_vao);
+    glBindVertexArray(bunny_vao);
+
+    glGenBuffers(1, &bunny_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, bunny_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(obj_data::vertex) * bunny.vertices.size(), bunny.vertices.data(), GL_STATIC_DRAW);
+
+    glGenBuffers(1, &bunny_ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bunny_ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * bunny.indices.size(), bunny.indices.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, sizeof(obj_data::vertex), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(obj_data::vertex), (void*)(3 * sizeof(float)));
+
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
     float time = 0.f;
+    float scale = 0.4f;
+    float angle = 0.f;
+    float aspect_ratio = 1.f;
 
     std::map<SDL_Keycode, bool> button_down;
 
@@ -189,6 +210,7 @@ int main() try
             case SDL_WINDOWEVENT_RESIZED:
                 width = event.window.data1;
                 height = event.window.data2;
+                aspect_ratio = (float)height / (float)width;
                 glViewport(0, 0, width, height);
                 break;
             }
@@ -208,14 +230,14 @@ int main() try
         float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
         last_frame_start = now;
         time += dt;
-
+        float angle = time;
         glClear(GL_COLOR_BUFFER_BIT);
 
         float model[16] =
         {
-            1.f, 0.f, 0.f, 0.f,
-            0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
+            1.f * scale * cos(angle), 0.f, -sin(angle) * scale, 0.f,
+            0.f, 1.f * scale, 0.f, 0.f,
+            scale * sin(angle), 0.f, 1.f * scale * cos(angle), 0.f,
             0.f, 0.f, 0.f, 1.f,
         };
 
@@ -239,7 +261,10 @@ int main() try
         glUniformMatrix4fv(model_location, 1, GL_TRUE, model);
         glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
         glUniformMatrix4fv(projection_location, 1, GL_TRUE, projection);
-
+        
+        glBindVertexArray(bunny_vao);
+        glDrawElements(GL_TRIANGLES, bunny.indices.size(), GL_UNSIGNED_INT, (void*)0);
+        
         SDL_GL_SwapWindow(window);
     }
 

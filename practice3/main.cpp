@@ -308,6 +308,9 @@ try
                 }
                 else if (event.button.button == SDL_BUTTON_RIGHT)
                 {
+                    if (lolkek.size()  < 1) {
+                        continue;
+                    }
                     glBindBuffer(GL_ARRAY_BUFFER, lolkek_vbo);
                     lolkek.pop_back();
                     glBufferData(GL_ARRAY_BUFFER, sizeof(vertex) * lolkek.size(), lolkek.data(), GL_STATIC_DRAW);

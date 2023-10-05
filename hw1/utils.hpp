@@ -83,8 +83,12 @@ void main()
 struct point {
     float x, y;
     
-    static point by(int r, int c) {
-        return new_point(r, c);
+    bool operator<(const point& other) const {
+        return x < other.x || (x == other.x && y < other.y);
+    }
+
+    bool operator==(const point& other) const {
+        return x == other.x && y == other.y;
     }
 };
 

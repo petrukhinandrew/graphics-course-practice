@@ -170,10 +170,11 @@ try
 
     glClearColor(0.f, 0.f, 0.f, 1.f);
 
+    isoline_bro<GRID_VERTICES_NUM_LIMIT, 20> iso_bro(1);
+    
     initGrid();
     initGridIndices();
     updateGridValues(0.f);
-    updateIsolines();
 
     auto vertex_shader = create_shader(GL_VERTEX_SHADER, vertex_shader_source);
     auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
@@ -183,7 +184,7 @@ try
     GLuint aspect_ratio_loc = glGetUniformLocation(program, "aspect_ratio");
     
     GLuint grid_vao, grid_vbo, grid_ebo, values_vbo;
-    GLuint iso_vao, iso_vbo;
+    
     ////////////////////////////////////
     glUseProgram(program);
     glUniform2f(aspect_ratio_loc, width < height ? 1.f : (float)height / (float)width, width < height ? (float)width / (float)height : 1.f);
@@ -211,15 +212,7 @@ try
 
     ///////////////////////////////
 
-    glGenVertexArrays(1, &iso_vao);
-    glBindVertexArray(iso_vao);
-
-    glGenBuffers(1, &iso_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, iso_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_TRUE, 2 * sizeof(float), (void *)0);
+    iso_bro.becomeBro();
     // //////////////////////////////////
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
@@ -259,10 +252,12 @@ try
                     increaseDetalization(grid_vbo, grid_ebo);
                     break;
                 case SDLK_UP:
-                    increaseIsolineNumber();
+                    iso_bro.workout();
+                    // increaseIsolineNumber();
                     break;
                 case SDLK_DOWN:
-                    decreaseIsolineNumber();
+                    iso_bro.weaken();
+                    // decreaseIsolineNumber();
                     break;
                 }
                 break;
@@ -287,12 +282,9 @@ try
         glBindBuffer(GL_ARRAY_BUFFER, values_vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * GRID_VERTICES_NUM, grid_values.data(), GL_STATIC_DRAW);
         glDrawElements(GL_TRIANGLES, GRID_INDICES_NUM, GL_UNSIGNED_INT, (void *)0);
+        
         glUniform1i(iso_loc, 1);
-        glBindVertexArray(iso_vao);
-        updateIsolines();
-        glBindBuffer(GL_ARRAY_BUFFER, iso_vbo);
-        glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
-        glDrawArrays(GL_LINES, 0, ISOLINE_POINTS);
+        iso_bro.doThingsBro();
 
         SDL_GL_SwapWindow(window);
     }

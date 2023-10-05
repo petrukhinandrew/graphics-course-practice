@@ -3,7 +3,7 @@
 - [X] +8 static solution
 - [X] +1 dynamic detalization
 - [X] +1 dynamic isolines number 
-- [ ] +2 no vertex doubling for isolines
+- [X] +2 no vertex doubling for isolines
 - [ ] +2 no vertex doubling for plot
 - [X] +1 const aspect ratio
 

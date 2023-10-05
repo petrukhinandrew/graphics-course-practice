@@ -5,7 +5,7 @@
 - [X] +1 dynamic isolines number 
 - [ ] +2 no vertex doubling for isolines
 - [ ] +2 no vertex doubling for plot
-- [ ] +1 const aspect ratio
+- [X] +1 const aspect ratio
 
 ## +KARMA
 - [ ] refactoring

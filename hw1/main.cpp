@@ -39,12 +39,12 @@ layout (location = 0) in vec3 in_position;
 layout (location = 1) in float in_value;
 
 out vec4 color;
-
+uniform vec2 aspect_ratio;
 uniform int iso;
 
 void main()
 {
-    gl_Position = vec4(in_position, 1.0);
+    gl_Position = vec4(in_position.x * aspect_ratio.x, in_position.y * aspect_ratio.y, in_position.z, 1.0);
     if (iso == 0) {
         float f = in_value > 0 ? 1 : -1; 
         float grey = 1 - abs(in_value);
@@ -109,6 +109,7 @@ GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
 
 const size_t W_LIM = 70;
 const size_t H_LIM = 70;
+
 const size_t GRID_VERTICES_NUM_LIMIT = (W_LIM + 1) * (H_LIM + 1);
 const size_t GRID_INDICES_NUM_LIMIT = W_LIM * H_LIM * 6;
 const size_t ISOLINES_ALLOC = GRID_VERTICES_NUM_LIMIT * GRID_VERTICES_NUM_LIMIT * 2;
@@ -408,6 +409,7 @@ try
 
     int width, height;
     SDL_GetWindowSize(window, &width, &height);
+    
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     if (!gl_context)
@@ -419,7 +421,7 @@ try
     if (!GLEW_VERSION_3_3)
         throw std::runtime_error("OpenGL 3.3 is not supported");
 
-    glClearColor(1.f, 1.f, 1.f, 1.f);
+    glClearColor(0.f, 0.f, 0.f, 1.f);
 
     initGrid();
     initGridIndices();
@@ -430,9 +432,14 @@ try
     auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
     auto program = create_program(vertex_shader, fragment_shader);
 
+    GLuint iso_loc = glGetUniformLocation(program, "iso");
+    GLuint aspect_ratio_loc = glGetUniformLocation(program, "aspect_ratio");
+    
     GLuint grid_vao, grid_vbo, grid_ebo, values_vbo;
     GLuint iso_vao, iso_vbo;
-
+    ////////////////////////////////////
+    glUseProgram(program);
+    glUniform2f(aspect_ratio_loc, width < height ? 1.f : (float)height / (float)width, width < height ? (float)width / (float)height : 1.f);
     ////////////////////////////////////
     glGenVertexArrays(1, &grid_vao);
     glBindVertexArray(grid_vao);
@@ -468,14 +475,12 @@ try
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, 3 * sizeof(float), (void *)0);
     // //////////////////////////////////
 
-    GLuint iso_loc = glGetUniformLocation(program, "iso");
-
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
     float time = 0.f;
 
     std::map<SDL_Keycode, bool> button_down;
-
+    
     bool running = true;
     while (running)
     {
@@ -492,6 +497,7 @@ try
                     width = event.window.data1;
                     height = event.window.data2;
                     glViewport(0, 0, width, height);
+                    glUniform2f(aspect_ratio_loc, width < height ? 1.f : (float)height / (float)width, width < height ? (float)width / (float)height : 1.f);
                     break;
                 }
                 break;
@@ -527,9 +533,6 @@ try
         time += dt;
 
         glClear(GL_COLOR_BUFFER_BIT);
-
-        glUseProgram(program);
-
         glUniform1i(iso_loc, 0);
         glBindVertexArray(grid_vao);
         updateGridValues(time);

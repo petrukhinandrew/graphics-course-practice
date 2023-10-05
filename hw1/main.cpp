@@ -5,9 +5,6 @@
 #include <SDL2/SDL.h>
 #endif
 
-#define MIN(A, B) A < B ? A : B
-#define MAX(A, B) A < B ? B : A
-
 #include <GL/glew.h>
 
 #include <string_view>
@@ -16,6 +13,10 @@
 #include <chrono>
 #include <vector>
 #include <map>
+
+#include "utils.hpp"
+#include "grid.hpp"
+#include "isoline.hpp"
 
 std::string to_string(std::string_view str)
 {
@@ -31,42 +32,6 @@ void glew_fail(std::string_view message, GLenum error)
 {
     throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
 }
-
-const char vertex_shader_source[] =
-    R"(#version 330 core
-
-layout (location = 0) in vec3 in_position;
-layout (location = 1) in float in_value;
-
-out vec4 color;
-uniform vec2 aspect_ratio;
-uniform int iso;
-
-void main()
-{
-    gl_Position = vec4(in_position.x * aspect_ratio.x, in_position.y * aspect_ratio.y, in_position.z, 1.0);
-    if (iso == 0) {
-        float f = in_value > 0 ? 1 : -1; 
-        float grey = 1 - abs(in_value);
-        color = vec4(f > grey ? f : grey, grey, -f > grey ? -f : grey, 1.0);
-    } else {
-        color = vec4(0.0, 0.0, 0.0, 1.0);
-    }
-}
-)";
-
-const char fragment_shader_source[] =
-    R"(#version 330 core
-
-in vec4 color;
-
-layout (location = 0) out vec4 out_color;
-
-void main()
-{
-    out_color = color;
-}
-)";
 
 GLuint create_shader(GLenum type, const char *source)
 {
@@ -105,78 +70,6 @@ GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
     }
 
     return result;
-}
-
-const size_t W_LIM = 70;
-const size_t H_LIM = 70;
-
-const size_t GRID_VERTICES_NUM_LIMIT = (W_LIM + 1) * (H_LIM + 1);
-const size_t GRID_INDICES_NUM_LIMIT = W_LIM * H_LIM * 6;
-const size_t ISOLINES_ALLOC = GRID_VERTICES_NUM_LIMIT * GRID_VERTICES_NUM_LIMIT * 2;
-size_t W = 25;
-size_t H = 25;
-size_t GRID_VERTICES_NUM = (W + 1) * (H + 1);
-size_t GRID_INDICES_NUM = W * H * 6;
-
-float DX = 2.f / (float)W;
-float DY = 2.f / (float)H;
-
-std::array<std::array<float, 3>, GRID_VERTICES_NUM_LIMIT> grid;
-std::array<float, GRID_VERTICES_NUM_LIMIT> grid_values;
-std::array<std::uint32_t, GRID_INDICES_NUM_LIMIT> grid_indices;
-std::array<std::array<float, 3>, ISOLINES_ALLOC> isolines;
-
-int ISOLINE_POINTS = 0;
-int ISOLINE_NUM = 1;
-const size_t XI_NUM = 7;
-const int F_MIN = -4;
-const int F_MAX = 6;
-
-void increaseIsolineNumber()
-{
-    ISOLINE_NUM = MIN(ISOLINE_NUM + 1, 20);
-}
-
-void decreaseIsolineNumber()
-{
-    ISOLINE_NUM = MAX(ISOLINE_NUM - 1, 0);
-}
-
-void recalculateDependentParameters()
-{
-    GRID_VERTICES_NUM = (W + 1) * (H + 1);
-    GRID_INDICES_NUM = W * H * 6;
-    DX = 2.f / (float)W;
-    DY = 2.f / (float)H;
-}
-
-void initGrid()
-{
-    for (size_t r = 0; r <= H; ++r)
-    {
-        for (size_t c = 0; c <= W; ++c)
-        {
-            auto x = 2.f * (float)c / (float)W - 1.f;
-            auto y = 2.f * (float)r / (float)H - 1.f;
-            grid[(W + 1) * r + c] = {x, y, 0.f};
-        }
-    }
-}
-
-void initGridIndices()
-{
-    for (size_t r = 0; r < H; ++r)
-    {
-        for (size_t c = 0; c <= W; ++c)
-        {
-            grid_indices[(r * (W) + c) * 6 + 0] = r * (W + 1) + c;
-            grid_indices[(r * (W) + c) * 6 + 1] = r * (W + 1) + c + 1;
-            grid_indices[(r * (W) + c) * 6 + 2] = (r + 1) * (W + 1) + c + 1;
-            grid_indices[(r * (W) + c) * 6 + 3] = r * (W + 1) + c;
-            grid_indices[(r * (W) + c) * 6 + 4] = (r + 1) * (W + 1) + c + 1;
-            grid_indices[(r * (W) + c) * 6 + 5] = (r + 1) * (W + 1) + c;
-        }
-    }
 }
 
 void rebindGrid(GLuint grid_vbo, GLuint grid_ebo)
@@ -233,152 +126,6 @@ void decreaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
 
     recalculateDependentParameters();
     rebindGrid(grid_vbo, grid_ebo);
-}
-
-void updateGridValues(float time)
-{
-    for (size_t r = 0; r <= H; ++r)
-    {
-        for (size_t c = 0; c <= W; ++c)
-        {
-            float x = 2.f * (float)c / (float)W - 1.f;
-            float y = 2.f * (float)r / (float)H - 1.f;
-            float f = 0;
-            for (int i = 0; i < XI_NUM; ++i)
-            {
-                float xi = cos(time * pow(-1, i) * (2.f * (float)i / (float)XI_NUM - 1.f));
-                float yi = sin(time * pow(-1, i) * (2.f * (float)i / (float)XI_NUM - 1.f));
-                float ri = i * 0.05f;
-                float ci = (float)i * pow(-1, i);
-                float numer = pow(x - xi, 2) + pow(y - yi, 2);
-                f += ci / exp(numer / pow(ri, 2));
-            }
-            grid_values[(W + 1) * r + c] = f;
-        }
-    }
-}
-
-struct point
-{
-    float x, y;
-};
-point new_point(int r, int c)
-{
-    return point{2.f * (float)c / (float)W - 1.f, 2.f * (float)r / (float)H - 1.f};
-}
-void insertIsoPoints(point p1, point p2)
-{
-    isolines[ISOLINE_POINTS] = {p1.x, p1.y, 0.f};
-    ISOLINE_POINTS++;
-    isolines[ISOLINE_POINTS] = {p2.x, p2.y, 0.f};
-    ISOLINE_POINTS++;
-}
-
-void interpolateIsoPoints(float l, int r, std::array<float, 4> &vals, point p1, point p2, point p3, point p4)
-{
-    point n{(p3.x + p4.x) / 2.f, p4.y};
-    point w{p1.x, (p1.y + p4.y) / 2.f};
-    point e{p2.x, (p2.y + p3.y) / 2.f};
-    point s{(p1.x + p2.x) / 2.f, p1.y};
-
-    if (r == 1 || r == 14)
-    {
-        point a = {p1.x, p1.y + DY * abs(l - vals[0]) / abs(vals[0] - vals[3])};
-        point b = {p1.x + DX * abs(l - vals[0]) / abs(vals[0] - vals[1]), p1.y};
-        insertIsoPoints(a, b);
-        return;
-    }
-    if (r == 2 || r == 13)
-    {
-        point a = {p2.x, p2.y + DY * abs(l - vals[1]) / abs(vals[1] - vals[2])};
-        point b = {p1.x + DX * abs(l - vals[0]) / abs(vals[0] - vals[1]), p1.y};
-        insertIsoPoints(a, b);
-        return;
-    }
-    if (r == 3 || r == 12)
-    {
-        point a = {p2.x, p2.y + DY * abs(l - vals[1]) / abs(vals[1] - vals[2])};
-        point b = {p1.x, p1.y + DY * abs(l - vals[0]) / abs(vals[3] - vals[0])};
-        insertIsoPoints(a, b);
-        return;
-    }
-
-    if (r == 4 || r == 11)
-    {
-        point a = {p2.x, p2.y + DY * abs(l - vals[1]) / abs(vals[1] - vals[2])};
-        point b = {p4.x + DX * abs(l - vals[3]) / abs(vals[3] - vals[2]), p4.y};
-        insertIsoPoints(a, b);
-        return;
-    }
-
-    if (r == 5)
-    {
-        point a = {p4.x + DX * abs(l - vals[3]) / abs(vals[3] - vals[2]), p4.y};
-        point b = {p1.x, p1.y + DY * abs(l - vals[0]) / abs(vals[0] - vals[3])};
-        insertIsoPoints(a, b);
-        a = {p2.x, p2.y + DY * abs(l - vals[1]) / (vals[1] + vals[2])};
-        b = {p1.x + DX * abs(l - vals[0]) / abs(vals[0] - vals[1]), p1.y};
-        insertIsoPoints(a, b);
-        return;
-    }
-
-    if (r == 6 || r == 9)
-    {
-        point a = {p1.x + DX * abs(l - vals[0]) / abs(vals[0] - vals[1]), p1.y};
-        point b = {p4.x + DX * abs(l - vals[3]) / abs(vals[3] - vals[2]), p4.y};
-        insertIsoPoints(a, b);
-        return;
-    }
-
-    if (r == 7 || r == 8)
-    {
-        point a = {p4.x + DX * abs(l - vals[3]) / abs(vals[3] - vals[2]), p4.y};
-        point b = {p1.x, p1.y + DY * abs(l - vals[0]) / abs(vals[0] - vals[3])};
-        insertIsoPoints(a, b);
-        return;
-    }
-
-    if (r == 10)
-    {
-        point a = {p1.x, p1.y + DY * abs(l - vals[0]) / abs(vals[0] - vals[3])};
-        point b = {p1.x + DX * abs(l - vals[0]) / abs(vals[0] - vals[1]), p1.y};
-        insertIsoPoints(a, b);
-        a = {p2.x, p2.y + DY * abs(l - vals[1]) / abs(vals[1] - vals[2])};
-        b = {p4.x + DX * abs(l - vals[3]) / abs(vals[3] - vals[2]), p4.y};
-        insertIsoPoints(a, b);
-        return;
-    }
-}
-
-void updateIsolines()
-{
-    ISOLINE_POINTS = 0;
-
-    for (size_t r = 0; r < H; ++r)
-    {
-        for (size_t c = 0; c < W; ++c)
-        {
-            std::array<float, 4> vs;
-            int vsi = 0;
-            for (auto i : {r * (W + 1) + c, r * (W + 1) + c + 1, (r + 1) * (W + 1) + c + 1, (r + 1) * (W + 1) + c})
-            {
-                vs[vsi] = grid_values[i];
-                vsi++;
-            }
-            point v1 = new_point(r, c);
-            point v2 = new_point(r, c + 1);
-            point v3 = new_point(r + 1, c + 1);
-            point v4 = new_point(r + 1, c);
-            for (int ison = 0; ison < ISOLINE_NUM; ++ison)
-            {
-                float k = (float)F_MIN + (F_MAX - F_MIN) * (float)ison / (float)ISOLINE_NUM;
-                if (abs(k) < 0.0001)
-                    continue;
-                int lolkek = (vs[0] > k) + 2 * (vs[1] > k) + 4 * (vs[2] > k) + 8 * (vs[3] > k);
-                interpolateIsoPoints((float)k, lolkek, vs, v1, v2, v3, v4);
-            }
-        }
-    }
 }
 
 int main()
@@ -446,14 +193,14 @@ try
 
     glGenBuffers(1, &grid_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * GRID_VERTICES_NUM, grid.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * GRID_VERTICES_NUM, grid.data(), GL_STATIC_DRAW);
 
     glGenBuffers(1, &grid_ebo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * GRID_INDICES_NUM, grid_indices.data(), GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, 3 * sizeof(float), (void *)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_TRUE, 2 * sizeof(float), (void *)0);
 
     glGenBuffers(1, &values_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, values_vbo);
@@ -469,10 +216,10 @@ try
 
     glGenBuffers(1, &iso_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, iso_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 3 * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, 3 * sizeof(float), (void *)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_TRUE, 2 * sizeof(float), (void *)0);
     // //////////////////////////////////
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
@@ -544,7 +291,7 @@ try
         glBindVertexArray(iso_vao);
         updateIsolines();
         glBindBuffer(GL_ARRAY_BUFFER, iso_vbo);
-        glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
         glDrawArrays(GL_LINES, 0, ISOLINE_POINTS);
 
         SDL_GL_SwapWindow(window);

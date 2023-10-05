@@ -253,11 +253,9 @@ try
                     break;
                 case SDLK_UP:
                     iso_bro.workout();
-                    // increaseIsolineNumber();
                     break;
                 case SDLK_DOWN:
                     iso_bro.weaken();
-                    // decreaseIsolineNumber();
                     break;
                 }
                 break;

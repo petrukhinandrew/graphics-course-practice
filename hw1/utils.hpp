@@ -11,12 +11,11 @@ struct parameters {
 
 };
 
-const size_t W_LIM = 70;
-const size_t H_LIM = 70;
+const size_t W_LIM = 80;
+const size_t H_LIM = 80;
 
 const size_t GRID_VERTICES_NUM_LIMIT = (W_LIM + 1) * (H_LIM + 1);
 const size_t GRID_INDICES_NUM_LIMIT = W_LIM * H_LIM * 6;
-const size_t ISOLINES_ALLOC = GRID_VERTICES_NUM_LIMIT * GRID_VERTICES_NUM_LIMIT * 2;
 size_t W = 25;
 size_t H = 25;
 size_t GRID_VERTICES_NUM = (W + 1) * (H + 1);
@@ -28,10 +27,7 @@ float DY = 2.f / (float)H;
 std::array<std::array<float, 2>, GRID_VERTICES_NUM_LIMIT> grid;
 std::array<float, GRID_VERTICES_NUM_LIMIT> grid_values;
 std::array<std::uint32_t, GRID_INDICES_NUM_LIMIT> grid_indices;
-std::array<std::array<float, 2>, ISOLINES_ALLOC> isolines;
 
-int ISOLINE_POINTS = 0;
-int ISOLINE_NUM = 1;
 const size_t XI_NUM = 7;
 const int F_MIN = -4;
 const int F_MAX = 6;

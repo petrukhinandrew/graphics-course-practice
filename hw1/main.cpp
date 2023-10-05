@@ -107,19 +107,34 @@ GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
     return result;
 }
 
-const size_t W = 50;
-const size_t H = 50;
+const size_t W_LIM = 50;
+const size_t H_LIM = 50;
+const size_t GRID_VERTICES_NUM_LIMIT = (W_LIM + 1) * (H_LIM + 1);
+const size_t GRID_INDICES_NUM_LIMIT = W_LIM * H_LIM * 6;
+const size_t ISOLINES_ALLOC = GRID_VERTICES_NUM_LIMIT * GRID_VERTICES_NUM_LIMIT * 2;
+size_t W = 25;
+size_t H = 25;
+size_t GRID_VERTICES_NUM = (W + 1) * (H + 1);
+size_t GRID_INDICES_NUM = W * H * 6;
 
-const float DX = 2.f / (float)W;
-const float DY = 2.f / (float)H;
+float DX = 2.f / (float)W;
+float DY = 2.f / (float)H;
 
-const size_t grid_vert_cnt = (W + 1) * (H + 1);
-std::array<std::array<float, 3>, grid_vert_cnt> grid;
-std::array<float, grid_vert_cnt> grid_values;
-std::array<std::uint32_t, W * H * 6> grid_indices;
+std::array<std::array<float, 3>, GRID_VERTICES_NUM_LIMIT> grid;
+std::array<float, GRID_VERTICES_NUM_LIMIT> grid_values;
+std::array<std::uint32_t, GRID_INDICES_NUM_LIMIT> grid_indices;
 
-std::array<std::array<float, 3>, grid_vert_cnt * grid_vert_cnt * 2> isolines;
-size_t li = 0;
+std::array<std::array<float, 3>, ISOLINES_ALLOC> isolines;
+
+size_t ISOLINE_POINTS = 0;
+
+void recalculateDependentParameters() {
+    GRID_VERTICES_NUM = (W + 1) * (H + 1);
+    GRID_INDICES_NUM = W * H * 6;
+    DX = 2.f / (float)W;
+    DY = 2.f / (float)H;
+}
+
 void initGrid()
 {
     for (size_t r = 0; r <= H; ++r)
@@ -132,6 +147,66 @@ void initGrid()
         }
     }
 }
+
+void initGridIndices()
+{
+    for (size_t r = 0; r < H; ++r)
+    {
+        for (size_t c = 0; c <= W; ++c)
+        {
+            grid_indices[(r * (W) + c) * 6 + 0] = r * (W + 1) + c;
+            grid_indices[(r * (W) + c) * 6 + 1] = r * (W + 1) + c + 1;
+            grid_indices[(r * (W) + c) * 6 + 2] = (r + 1) * (W + 1) + c + 1;
+            grid_indices[(r * (W) + c) * 6 + 3] = r * (W + 1) + c;
+            grid_indices[(r * (W) + c) * 6 + 4] = (r + 1) * (W + 1) + c + 1;
+            grid_indices[(r * (W) + c) * 6 + 5] = (r + 1) * (W + 1) + c;
+        }
+    }
+}
+
+void rebindGrid(GLuint grid_vbo, GLuint grid_ebo) {
+    initGrid();
+    initGridIndices();
+    glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
+    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * GRID_VERTICES_NUM, grid.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * GRID_INDICES_NUM, grid_indices.data(), GL_STATIC_DRAW);
+}
+
+void increaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
+{ 
+    if (W < 10) { 
+        W++;
+    } else {
+        W = MIN(W_LIM, W + 10);
+    }
+    if (H < 10) {
+        H++;
+    } else {
+        H = MIN(H_LIM, H + 10);
+    }
+    
+    recalculateDependentParameters();
+    rebindGrid(grid_vbo, grid_ebo);
+}
+
+void decreaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
+{
+    if (W <= 10) {
+        W = MAX(1, W - 1);
+    } else {
+        W = MAX(10, W - 10);
+    }
+    if (H <= 10) {
+        H = MAX(1, H - 1);
+    } else {
+        H = MAX(10, H - 10);
+    }
+    
+    recalculateDependentParameters();
+    rebindGrid(grid_vbo, grid_ebo);
+}
+
 
 const int XI_NUM = 7;
 const int F_MIN = -4;
@@ -164,16 +239,18 @@ struct point
 {
     float x, y;
 };
-point new_point(int r, int c) {
+point new_point(int r, int c)
+{
     return point{2.f * (float)c / (float)W - 1.f, 2.f * (float)r / (float)H - 1.f};
 }
 void insertIsoPoints(point p1, point p2)
 {
-    isolines[li] = {p1.x, p1.y, 0.f};
-    li++;
-    isolines[li] = {p2.x, p2.y, 0.f};
-    li++;
+    isolines[ISOLINE_POINTS] = {p1.x, p1.y, 0.f};
+    ISOLINE_POINTS++;
+    isolines[ISOLINE_POINTS] = {p2.x, p2.y, 0.f};
+    ISOLINE_POINTS++;
 }
+
 void interpolateIsoPoints(float l, int r, std::array<float, 4> &vals, point p1, point p2, point p3, point p4)
 {
     point n{(p3.x + p4.x) / 2.f, p4.y};
@@ -222,7 +299,7 @@ void interpolateIsoPoints(float l, int r, std::array<float, 4> &vals, point p1, 
         return;
     }
 
-    if (r == 6 || r == 9) 
+    if (r == 6 || r == 9)
     {
         point a = {p1.x + DX * abs(l - vals[0]) / abs(vals[0] - vals[1]), p1.y};
         point b = {p4.x + DX * abs(l - vals[3]) / abs(vals[3] - vals[2]), p4.y};
@@ -252,7 +329,7 @@ void interpolateIsoPoints(float l, int r, std::array<float, 4> &vals, point p1, 
 
 void updateIsolines()
 {
-    li = 0;
+    ISOLINE_POINTS = 0;
     for (size_t r = 0; r < H; ++r)
     {
         for (size_t c = 0; c < W; ++c)
@@ -268,26 +345,13 @@ void updateIsolines()
             point v2 = new_point(r, c + 1);
             point v3 = new_point(r + 1, c + 1);
             point v4 = new_point(r + 1, c);
-            for (int k = F_MIN; k <= F_MAX; ++k) {
+            for (int k = F_MIN; k <= F_MAX; ++k)
+            {
+                if (k == 0)
+                    continue;
                 int lolkek = (vs[0] > k) + 2 * (vs[1] > k) + 4 * (vs[2] > k) + 8 * (vs[3] > k);
                 interpolateIsoPoints((float)k, lolkek, vs, v1, v2, v3, v4);
             }
-        }
-    }
-}
-
-void initGridIndices()
-{
-    for (size_t r = 0; r < H; ++r)
-    {
-        for (size_t c = 0; c <= W; ++c)
-        {
-            grid_indices[(r * (W) + c) * 6 + 0] = r * (W + 1) + c;
-            grid_indices[(r * (W) + c) * 6 + 1] = r * (W + 1) + c + 1;
-            grid_indices[(r * (W) + c) * 6 + 2] = (r + 1) * (W + 1) + c + 1;
-            grid_indices[(r * (W) + c) * 6 + 3] = r * (W + 1) + c;
-            grid_indices[(r * (W) + c) * 6 + 4] = (r + 1) * (W + 1) + c + 1;
-            grid_indices[(r * (W) + c) * 6 + 5] = (r + 1) * (W + 1) + c;
         }
     }
 }
@@ -335,6 +399,8 @@ try
 
     initGrid();
     initGridIndices();
+    updateGridValues(0.f);
+    updateIsolines();
 
     auto vertex_shader = create_shader(GL_VERTEX_SHADER, vertex_shader_source);
     auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
@@ -349,18 +415,18 @@ try
 
     glGenBuffers(1, &grid_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * grid.size(), grid.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * GRID_VERTICES_NUM, grid.data(), GL_STATIC_DRAW);
 
     glGenBuffers(1, &grid_ebo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * grid_indices.size(), grid_indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * GRID_INDICES_NUM, grid_indices.data(), GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, 3 * sizeof(float), (void *)0);
 
     glGenBuffers(1, &values_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, values_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(float) * grid_values.size(), grid_values.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * GRID_VERTICES_NUM, grid_values.data(), GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_TRUE, sizeof(float), (void *)0);
@@ -372,7 +438,7 @@ try
 
     glGenBuffers(1, &iso_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, iso_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * isolines.size(), isolines.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 3 * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, 3 * sizeof(float), (void *)0);
@@ -407,6 +473,14 @@ try
                 break;
             case SDL_KEYDOWN:
                 button_down[event.key.keysym.sym] = true;
+                switch (event.key.keysym.sym) {
+                    case SDLK_LEFT:
+                        decreaseDetalization(grid_vbo, grid_ebo);
+                    break;
+                    case SDLK_RIGHT:
+                        increaseDetalization(grid_vbo, grid_ebo);
+                    break;
+                }
                 break;
             case SDL_KEYUP:
                 button_down[event.key.keysym.sym] = false;
@@ -430,15 +504,15 @@ try
         updateGridValues(time);
 
         glBindBuffer(GL_ARRAY_BUFFER, values_vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * grid_values.size(), grid_values.data(), GL_STATIC_DRAW);
-        glDrawElements(GL_TRIANGLES, grid_indices.size(), GL_UNSIGNED_INT, (void *)0);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * GRID_VERTICES_NUM, grid_values.data(), GL_STATIC_DRAW);
+        glDrawElements(GL_TRIANGLES, GRID_INDICES_NUM, GL_UNSIGNED_INT, (void *)0);
 
         glUniform1i(iso_loc, 1);
         glBindVertexArray(iso_vao);
         updateIsolines();
         glBindBuffer(GL_ARRAY_BUFFER, iso_vbo);
-        glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * li, isolines.data(), GL_STATIC_DRAW);
-        glDrawArrays(GL_LINES, 0, li);
+        glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * ISOLINE_POINTS, isolines.data(), GL_STATIC_DRAW);
+        glDrawArrays(GL_LINES, 0, ISOLINE_POINTS);
 
         SDL_GL_SwapWindow(window);
     }

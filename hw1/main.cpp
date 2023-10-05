@@ -107,8 +107,8 @@ GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
     return result;
 }
 
-const size_t W_LIM = 50;
-const size_t H_LIM = 50;
+const size_t W_LIM = 70;
+const size_t H_LIM = 70;
 const size_t GRID_VERTICES_NUM_LIMIT = (W_LIM + 1) * (H_LIM + 1);
 const size_t GRID_INDICES_NUM_LIMIT = W_LIM * H_LIM * 6;
 const size_t ISOLINES_ALLOC = GRID_VERTICES_NUM_LIMIT * GRID_VERTICES_NUM_LIMIT * 2;
@@ -123,12 +123,26 @@ float DY = 2.f / (float)H;
 std::array<std::array<float, 3>, GRID_VERTICES_NUM_LIMIT> grid;
 std::array<float, GRID_VERTICES_NUM_LIMIT> grid_values;
 std::array<std::uint32_t, GRID_INDICES_NUM_LIMIT> grid_indices;
-
 std::array<std::array<float, 3>, ISOLINES_ALLOC> isolines;
 
-size_t ISOLINE_POINTS = 0;
+int ISOLINE_POINTS = 0;
+int ISOLINE_NUM = 1;
+const size_t XI_NUM = 7;
+const int F_MIN = -4;
+const int F_MAX = 6;
 
-void recalculateDependentParameters() {
+void increaseIsolineNumber()
+{
+    ISOLINE_NUM = MIN(ISOLINE_NUM + 1, 20);
+}
+
+void decreaseIsolineNumber()
+{
+    ISOLINE_NUM = MAX(ISOLINE_NUM - 1, 0);
+}
+
+void recalculateDependentParameters()
+{
     GRID_VERTICES_NUM = (W + 1) * (H + 1);
     GRID_INDICES_NUM = W * H * 6;
     DX = 2.f / (float)W;
@@ -164,7 +178,8 @@ void initGridIndices()
     }
 }
 
-void rebindGrid(GLuint grid_vbo, GLuint grid_ebo) {
+void rebindGrid(GLuint grid_vbo, GLuint grid_ebo)
+{
     initGrid();
     initGridIndices();
     glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
@@ -174,43 +189,50 @@ void rebindGrid(GLuint grid_vbo, GLuint grid_ebo) {
 }
 
 void increaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
-{ 
-    if (W < 10) { 
+{
+    if (W < 10)
+    {
         W++;
-    } else {
+    }
+    else
+    {
         W = MIN(W_LIM, W + 10);
     }
-    if (H < 10) {
+    if (H < 10)
+    {
         H++;
-    } else {
+    }
+    else
+    {
         H = MIN(H_LIM, H + 10);
     }
-    
+
     recalculateDependentParameters();
     rebindGrid(grid_vbo, grid_ebo);
 }
 
 void decreaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
 {
-    if (W <= 10) {
+    if (W <= 10)
+    {
         W = MAX(1, W - 1);
-    } else {
+    }
+    else
+    {
         W = MAX(10, W - 10);
     }
-    if (H <= 10) {
+    if (H <= 10)
+    {
         H = MAX(1, H - 1);
-    } else {
+    }
+    else
+    {
         H = MAX(10, H - 10);
     }
-    
+
     recalculateDependentParameters();
     rebindGrid(grid_vbo, grid_ebo);
 }
-
-
-const int XI_NUM = 7;
-const int F_MIN = -4;
-const int F_MAX = 6;
 
 void updateGridValues(float time)
 {
@@ -330,6 +352,7 @@ void interpolateIsoPoints(float l, int r, std::array<float, 4> &vals, point p1, 
 void updateIsolines()
 {
     ISOLINE_POINTS = 0;
+
     for (size_t r = 0; r < H; ++r)
     {
         for (size_t c = 0; c < W; ++c)
@@ -345,9 +368,10 @@ void updateIsolines()
             point v2 = new_point(r, c + 1);
             point v3 = new_point(r + 1, c + 1);
             point v4 = new_point(r + 1, c);
-            for (int k = F_MIN; k <= F_MAX; ++k)
+            for (int ison = 0; ison < ISOLINE_NUM; ++ison)
             {
-                if (k == 0)
+                float k = (float)F_MIN + (F_MAX - F_MIN) * (float)ison / (float)ISOLINE_NUM;
+                if (abs(k) < 0.0001)
                     continue;
                 int lolkek = (vs[0] > k) + 2 * (vs[1] > k) + 4 * (vs[2] > k) + 8 * (vs[3] > k);
                 interpolateIsoPoints((float)k, lolkek, vs, v1, v2, v3, v4);
@@ -473,12 +497,19 @@ try
                 break;
             case SDL_KEYDOWN:
                 button_down[event.key.keysym.sym] = true;
-                switch (event.key.keysym.sym) {
-                    case SDLK_LEFT:
-                        decreaseDetalization(grid_vbo, grid_ebo);
+                switch (event.key.keysym.sym)
+                {
+                case SDLK_LEFT:
+                    decreaseDetalization(grid_vbo, grid_ebo);
                     break;
-                    case SDLK_RIGHT:
-                        increaseDetalization(grid_vbo, grid_ebo);
+                case SDLK_RIGHT:
+                    increaseDetalization(grid_vbo, grid_ebo);
+                    break;
+                case SDLK_UP:
+                    increaseIsolineNumber();
+                    break;
+                case SDLK_DOWN:
+                    decreaseIsolineNumber();
                     break;
                 }
                 break;
@@ -506,7 +537,6 @@ try
         glBindBuffer(GL_ARRAY_BUFFER, values_vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * GRID_VERTICES_NUM, grid_values.data(), GL_STATIC_DRAW);
         glDrawElements(GL_TRIANGLES, GRID_INDICES_NUM, GL_UNSIGNED_INT, (void *)0);
-
         glUniform1i(iso_loc, 1);
         glBindVertexArray(iso_vao);
         updateIsolines();

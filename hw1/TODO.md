@@ -1,2 +1,6 @@
-- [X] lol
-- [ ] kek
+- [X] static solution
+- [X] W != H works as W == H
+- [ ] dynamic detalization
+- [ ] dynamic isolines number 
+- [ ] static graphic size
+- [ ] refactoring

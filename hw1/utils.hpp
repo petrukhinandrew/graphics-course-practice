@@ -5,12 +5,6 @@
 #define MIN(A, B) A < B ? A : B
 #define MAX(A, B) A < B ? B : A
 
-using std::size_t;
-
-struct parameters {
-
-};
-
 const size_t W_LIM = 80;
 const size_t H_LIM = 80;
 
@@ -24,10 +18,6 @@ size_t GRID_INDICES_NUM = W * H * 6;
 float DX = 2.f / (float)W;
 float DY = 2.f / (float)H;
 
-std::array<std::array<float, 2>, GRID_VERTICES_NUM_LIMIT> grid;
-std::array<float, GRID_VERTICES_NUM_LIMIT> grid_values;
-std::array<std::uint32_t, GRID_INDICES_NUM_LIMIT> grid_indices;
-
 const size_t XI_NUM = 7;
 const int F_MIN = -4;
 const int F_MAX = 6;
@@ -39,42 +29,6 @@ void recalculateDependentParameters()
     DX = 2.f / (float)W;
     DY = 2.f / (float)H;
 }
-
-const char vertex_shader_source[] =
-    R"(#version 330 core
-
-layout (location = 0) in vec2 in_position;
-layout (location = 1) in float in_value;
-
-out vec4 color;
-uniform vec2 aspect_ratio;
-uniform int iso;
-
-void main()
-{
-    gl_Position = vec4(in_position * aspect_ratio, 0.0, 1.0);
-    if (iso == 0) {
-        float f = in_value > 0 ? 1 : -1; 
-        float grey = 1 - abs(in_value);
-        color = vec4(f > grey ? f : grey, grey, -f > grey ? -f : grey, 1.0);
-    } else {
-        color = vec4(0.0, 0.0, 0.0, 1.0);
-    }
-}
-)";
-
-const char fragment_shader_source[] =
-    R"(#version 330 core
-
-in vec4 color;
-
-layout (location = 0) out vec4 out_color;
-
-void main()
-{
-    out_color = color;
-}
-)";
 
 struct point {
     float x, y;

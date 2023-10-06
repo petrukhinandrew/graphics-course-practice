@@ -8,7 +8,6 @@ template <int MUSCLE_LIMIT, int SIZE_LIMIT>
 class isoline_bro
 {
 public:
-    GLuint vao, vbo, ebo;
     isoline_bro(int init_size) : _size(init_size), _next_idx(0), _next_point(0)
     {
     }
@@ -18,9 +17,9 @@ public:
         _initBro();
     }
 
-    void doThingsBro()
+    void doThingsBro(float *bro_data)
     {
-        _muscleBro();
+        _muscleBro(bro_data);
         _bindBro();
         _poseBro();
     }
@@ -36,6 +35,7 @@ public:
     }
 
 private:
+    GLuint vao, vbo, ebo;
     int _size;
     std::array<std::array<float, 2>, MUSCLE_LIMIT> _points;
     size_t _next_point, _next_idx;
@@ -70,7 +70,7 @@ private:
         glDrawElements(GL_LINES, _next_idx, GL_UNSIGNED_INT, (void *)0);
     }
 
-    void _muscleBro()
+    void _muscleBro(float *bro_data)
     {
         _next_point = 0;
         _next_idx = 0;
@@ -84,7 +84,7 @@ private:
                 int vsi = 0;
                 for (auto i : {r * (W + 1) + c, r * (W + 1) + c + 1, (r + 1) * (W + 1) + c + 1, (r + 1) * (W + 1) + c})
                 {
-                    vs[vsi] = grid_values[i];
+                    vs[vsi] = bro_data[i];
                     vsi++;
                 }
                 point v1 = new_point(r, c);

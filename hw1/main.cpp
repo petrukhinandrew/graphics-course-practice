@@ -1,88 +1,12 @@
-#ifdef WIN32
-#include <SDL.h>
-#undef main
-#else
-#include <SDL2/SDL.h>
-#endif
-
-#include <GL/glew.h>
-
-#include <string_view>
-#include <stdexcept>
-#include <iostream>
 #include <chrono>
-#include <vector>
-#include <map>
 
+#include "shaders.hpp"
 #include "utils.hpp"
 #include "grid.hpp"
 #include "isoline.hpp"
 
-std::string to_string(std::string_view str)
-{
-    return std::string(str.begin(), str.end());
-}
-
-void sdl2_fail(std::string_view message)
-{
-    throw std::runtime_error(to_string(message) + SDL_GetError());
-}
-
-void glew_fail(std::string_view message, GLenum error)
-{
-    throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
-}
-
-GLuint create_shader(GLenum type, const char *source)
-{
-    GLuint result = glCreateShader(type);
-    glShaderSource(result, 1, &source, nullptr);
-    glCompileShader(result);
-    GLint status;
-    glGetShaderiv(result, GL_COMPILE_STATUS, &status);
-    if (status != GL_TRUE)
-    {
-        GLint info_log_length;
-        glGetShaderiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
-        std::string info_log(info_log_length, '\0');
-        glGetShaderInfoLog(result, info_log.size(), nullptr, info_log.data());
-        throw std::runtime_error("Shader compilation failed: " + info_log);
-    }
-    return result;
-}
-
-GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
-{
-    GLuint result = glCreateProgram();
-    glAttachShader(result, vertex_shader);
-    glAttachShader(result, fragment_shader);
-    glLinkProgram(result);
-
-    GLint status;
-    glGetProgramiv(result, GL_LINK_STATUS, &status);
-    if (status != GL_TRUE)
-    {
-        GLint info_log_length;
-        glGetProgramiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
-        std::string info_log(info_log_length, '\0');
-        glGetProgramInfoLog(result, info_log.size(), nullptr, info_log.data());
-        throw std::runtime_error("Program linkage failed: " + info_log);
-    }
-
-    return result;
-}
-
-void rebindGrid(GLuint grid_vbo, GLuint grid_ebo)
-{
-    initGrid();
-    initGridIndices();
-    glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(float) * GRID_VERTICES_NUM, grid.data(), GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * GRID_INDICES_NUM, grid_indices.data(), GL_STATIC_DRAW);
-}
-
-void increaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
+template<size_t N>
+void increaseDetalization(grid_g<N>& g)
 {
     if (W < 10)
     {
@@ -102,10 +26,11 @@ void increaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
     }
 
     recalculateDependentParameters();
-    rebindGrid(grid_vbo, grid_ebo);
+    g.reload();
 }
 
-void decreaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
+template<size_t N>
+void decreaseDetalization(grid_g<N>& g)
 {
     if (W <= 10)
     {
@@ -125,7 +50,7 @@ void decreaseDetalization(GLuint grid_vbo, GLuint grid_ebo)
     }
 
     recalculateDependentParameters();
-    rebindGrid(grid_vbo, grid_ebo);
+    g.reload();
 }
 
 int main()
@@ -169,12 +94,8 @@ try
         throw std::runtime_error("OpenGL 3.3 is not supported");
 
     glClearColor(0.f, 0.f, 0.f, 1.f);
-
-    isoline_bro<GRID_VERTICES_NUM_LIMIT, 20> iso_bro(1);
-    
-    initGrid();
-    initGridIndices();
-    updateGridValues(0.f);
+    grid_g<GRID_VERTICES_NUM_LIMIT> real_g;
+    isoline_bro<GRID_VERTICES_NUM_LIMIT, 20> iso_bro(5);
 
     auto vertex_shader = create_shader(GL_VERTEX_SHADER, vertex_shader_source);
     auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
@@ -182,38 +103,12 @@ try
 
     GLuint iso_loc = glGetUniformLocation(program, "iso");
     GLuint aspect_ratio_loc = glGetUniformLocation(program, "aspect_ratio");
-    
-    GLuint grid_vao, grid_vbo, grid_ebo, values_vbo;
-    
-    ////////////////////////////////////
+        
     glUseProgram(program);
     glUniform2f(aspect_ratio_loc, width < height ? 1.f : (float)height / (float)width, width < height ? (float)width / (float)height : 1.f);
-    ////////////////////////////////////
-    glGenVertexArrays(1, &grid_vao);
-    glBindVertexArray(grid_vao);
-
-    glGenBuffers(1, &grid_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
-    glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * GRID_VERTICES_NUM, grid.data(), GL_STATIC_DRAW);
-
-    glGenBuffers(1, &grid_ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * GRID_INDICES_NUM, grid_indices.data(), GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_TRUE, 2 * sizeof(float), (void *)0);
-
-    glGenBuffers(1, &values_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, values_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * GRID_VERTICES_NUM, grid_values.data(), GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_TRUE, sizeof(float), (void *)0);
-
-    ///////////////////////////////
-
+    
     iso_bro.becomeBro();
-    // //////////////////////////////////
+    real_g.prepare();
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
@@ -246,10 +141,10 @@ try
                 switch (event.key.keysym.sym)
                 {
                 case SDLK_LEFT:
-                    decreaseDetalization(grid_vbo, grid_ebo);
+                    decreaseDetalization(real_g);
                     break;
                 case SDLK_RIGHT:
-                    increaseDetalization(grid_vbo, grid_ebo);
+                    increaseDetalization(real_g);
                     break;
                 case SDLK_UP:
                     iso_bro.workout();
@@ -273,16 +168,12 @@ try
         time += dt;
 
         glClear(GL_COLOR_BUFFER_BIT);
+        
         glUniform1i(iso_loc, 0);
-        glBindVertexArray(grid_vao);
-        updateGridValues(time);
-
-        glBindBuffer(GL_ARRAY_BUFFER, values_vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * GRID_VERTICES_NUM, grid_values.data(), GL_STATIC_DRAW);
-        glDrawElements(GL_TRIANGLES, GRID_INDICES_NUM, GL_UNSIGNED_INT, (void *)0);
+        real_g.shot(time);
         
         glUniform1i(iso_loc, 1);
-        iso_bro.doThingsBro();
+        iso_bro.doThingsBro(real_g.showEm());
 
         SDL_GL_SwapWindow(window);
     }

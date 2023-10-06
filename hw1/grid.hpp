@@ -128,10 +128,10 @@ private:
     float _explainThisPoint(float x, float y, float time)
     {
         float f = 0;
-        for (int i = 0; i < _boss.XI_NUM; ++i)
+        for (int i = 0; i < XI_NUM; ++i)
         {
-            float xi = cos(time * pow(-1, i) * (2.f * (float)i / (float)_boss.XI_NUM - 1.f));
-            float yi = sin(time * pow(-1, i) * (2.f * (float)i / (float)_boss.XI_NUM - 1.f));
+            float xi = cos(time * pow(-1, i) * (2.f * (float)i / (float)XI_NUM - 1.f));
+            float yi = sin(time * pow(-1, i) * (2.f * (float)i / (float)XI_NUM - 1.f));
             float ri = i * 0.05f;
             float ci = (float)i * pow(-1, i);
             float numer = pow(x - xi, 2) + pow(y - yi, 2);
@@ -145,4 +145,6 @@ private:
     std::array<std::array<float, 2>, big_boss::GRID_VERTICES_NUM_LIMIT> _vertices;
     std::array<float, big_boss::GRID_VERTICES_NUM_LIMIT> _values;
     std::array<std::uint32_t, big_boss::GRID_INDICES_NUM_LIMIT> _indices;
+    
+    static constexpr size_t XI_NUM = 7;
 };

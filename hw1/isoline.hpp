@@ -43,6 +43,9 @@ private:
     std::map<point, std::uint32_t> _mapping;
     std::array<std::uint32_t, MUSCLE_LIMIT * SIZE_LIMIT> _indices;
 
+    static constexpr int F_MIN = -4;
+    static constexpr int F_MAX = 6;
+
     void _initBro()
     {
         glGenVertexArrays(1, &vao);
@@ -97,7 +100,7 @@ private:
 
                 for (int cruBro = 0; cruBro < _size; ++cruBro)
                 {
-                    float k = (float)_boss.F_MIN + (_boss.F_MAX - _boss.F_MIN) * (float)cruBro / (float)this->_size;
+                    float k = (float)F_MIN + (F_MAX - F_MIN) * (float)cruBro / (float)this->_size;
                     if (abs(k) < 0.0001)
                         continue;
                     int kekBro = (vs[0] > k) + 2 * (vs[1] > k) + 4 * (vs[2] > k) + 8 * (vs[3] > k);

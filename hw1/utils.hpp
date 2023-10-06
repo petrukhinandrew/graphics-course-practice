@@ -9,19 +9,16 @@ struct big_boss
 {
     size_t W = 25;
     size_t H = 25;
-    size_t GRID_VERTICES_NUM = (W + 1) * (H + 1);
-    size_t GRID_INDICES_NUM = W * H * 6;
-
-    float DX = 2.f / (float)W;
-    float DY = 2.f / (float)H;
-
-    static constexpr size_t XI_NUM = 7;
-    static constexpr int F_MIN = -4;
-    static constexpr int F_MAX = 6;
     static constexpr size_t W_LIM = 70;
     static constexpr size_t H_LIM = 70;
+
+    size_t GRID_VERTICES_NUM = (W + 1) * (H + 1);
+    size_t GRID_INDICES_NUM = W * H * 6;
     static constexpr size_t GRID_VERTICES_NUM_LIMIT = (W_LIM + 1) * (H_LIM + 1);
     static constexpr size_t GRID_INDICES_NUM_LIMIT = GRID_VERTICES_NUM_LIMIT * 6;
+    
+    float DX = 2.f / (float)W;
+    float DY = 2.f / (float)H;
 
     void doBusiness()
     {

@@ -2,7 +2,6 @@
 #include "utils.hpp"
 #include <map>
 
-template <size_t AMMO>
 class grid_g
 {
 public:
@@ -52,7 +51,7 @@ private:
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * _boss.GRID_INDICES_NUM, _indices.data(), GL_STATIC_DRAW);
 
         glBindBuffer(GL_ARRAY_BUFFER, vertices_vbo);
-        glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * AMMO, _vertices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, 2 * sizeof(float) * _boss.GRID_VERTICES_NUM, _vertices.data(), GL_STATIC_DRAW);
     }
 
     void _paintEm()
@@ -141,59 +140,9 @@ private:
         return f;
     }
 
-    static constexpr size_t RELOAD_TYPE = 6;
     big_boss& _boss;
     GLuint vao, values_vbo, vertices_vbo, ebo;
-    std::array<std::array<float, 2>, AMMO> _vertices;
-    std::array<float, AMMO> _values;
-    std::array<std::uint32_t, AMMO * RELOAD_TYPE> _indices;
+    std::array<std::array<float, 2>, big_boss::GRID_VERTICES_NUM_LIMIT> _vertices;
+    std::array<float, big_boss::GRID_VERTICES_NUM_LIMIT> _values;
+    std::array<std::uint32_t, big_boss::GRID_INDICES_NUM_LIMIT> _indices;
 };
-
-// template<size_t N>
-// void increaseDetalization(grid_g<N>& g)
-// {
-//     if (W < 10)
-//     {
-//         W++;
-//     }
-//     else
-//     {
-//         W = MIN(W_LIM, W + 10);
-//     }
-//     if (H < 10)
-//     {
-//         H++;
-//     }
-//     else
-//     {
-//         H = MIN(H_LIM, H + 10);
-//     }
-
-//     recalculateDependentParameters();
-//     g.reload();
-// }
-
-// template<size_t N>
-// void decreaseDetalization(grid_g<N>& g)
-// {
-//     if (W <= 10)
-//     {
-//         W = MAX(1, W - 1);
-//     }
-//     else
-//     {
-//         W = MAX(10, W - 10);
-//     }
-//     if (H <= 10)
-//     {
-//         H = MAX(1, H - 1);
-//     }
-//     else
-//     {
-//         H = MAX(10, H - 10);
-//     }
-
-//     recalculateDependentParameters();
-//     g.reload();
-// }
-

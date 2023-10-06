@@ -18,13 +18,14 @@ struct big_boss
     static constexpr size_t XI_NUM = 7;
     static constexpr int F_MIN = -4;
     static constexpr int F_MAX = 6;
-    static constexpr size_t W_LIM = 80;
-    static constexpr size_t H_LIM = 80;
+    static constexpr size_t W_LIM = 70;
+    static constexpr size_t H_LIM = 70;
     static constexpr size_t GRID_VERTICES_NUM_LIMIT = (W_LIM + 1) * (H_LIM + 1);
-    static constexpr size_t GRID_INDICES_NUM_LIMIT = W_LIM * H_LIM * 6;
+    static constexpr size_t GRID_INDICES_NUM_LIMIT = GRID_VERTICES_NUM_LIMIT * 6;
 
     void doBusiness()
     {
+        
         if (W < 10)
         {
             W++;
@@ -41,7 +42,7 @@ struct big_boss
         {
             H = MIN(H_LIM, H + 10);
         }
-
+        std::cout << W << std::endl;
         _rule();
     }
 

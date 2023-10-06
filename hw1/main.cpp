@@ -48,7 +48,9 @@ try
     glClearColor(0.1f, 0.1f, 0.2f, 1.f);
     
     big_boss ceo;
-    grid_g<ceo.GRID_VERTICES_NUM_LIMIT> real_g(ceo);
+    
+    grid_g real_g(ceo);
+
     isoline_bro<ceo.GRID_VERTICES_NUM_LIMIT, 20> iso_bro(1, ceo);
 
     auto vertex_shader = create_shader(GL_VERTEX_SHADER, vertex_shader_source);
@@ -97,12 +99,10 @@ try
                 case SDLK_LEFT:
                     ceo.undoBusiness();
                     real_g.reload();
-                    // decreaseDetalization(real_g);
                     break;
                 case SDLK_RIGHT:
                     ceo.doBusiness();
                     real_g.reload();
-                    // increaseDetalization(real_g);
                     break;
                 case SDLK_UP:
                     iso_bro.workout();

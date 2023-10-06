@@ -8,7 +8,7 @@ template <int MUSCLE_LIMIT, int SIZE_LIMIT>
 class isoline_bro
 {
 public:
-    isoline_bro(int init_size) : _size(init_size), _next_idx(0), _next_point(0)
+    isoline_bro(int init_size, big_boss& boss) : _boss(boss), _size(init_size), _next_idx(0), _next_point(0)
     {
     }
 
@@ -37,6 +37,7 @@ public:
 private:
     GLuint vao, vbo, ebo;
     int _size;
+    big_boss& _boss;
     std::array<std::array<float, 2>, MUSCLE_LIMIT> _points;
     size_t _next_point, _next_idx;
     std::map<point, std::uint32_t> _mapping;
@@ -76,25 +77,27 @@ private:
         _next_idx = 0;
         _mapping.clear();
 
-        for (size_t r = 0; r < H; ++r)
+        for (size_t r = 0; r < _boss.H; ++r)
         {
-            for (size_t c = 0; c < W; ++c)
+            for (size_t c = 0; c < _boss.W; ++c)
             {
                 std::array<float, 4> vs;
                 int vsi = 0;
-                for (auto i : {r * (W + 1) + c, r * (W + 1) + c + 1, (r + 1) * (W + 1) + c + 1, (r + 1) * (W + 1) + c})
+                for (auto i : {r * (_boss.W + 1) + c, r * (_boss.W + 1) + c + 1, (r + 1) * (_boss.W + 1) + c + 1, (r + 1) * (_boss.W + 1) + c})
                 {
                     vs[vsi] = bro_data[i];
                     vsi++;
                 }
-                point v1 = new_point(r, c);
-                point v2 = new_point(r, c + 1);
-                point v3 = new_point(r + 1, c + 1);
-                point v4 = new_point(r + 1, c);
+                float W = (float)_boss.W;
+                float H = (float)_boss.H;
+                point v1 = new_point(r, c, W, H);
+                point v2 = new_point(r, c + 1, W, H);
+                point v3 = new_point(r + 1, c + 1, W, H);
+                point v4 = new_point(r + 1, c, W, H);
 
                 for (int cruBro = 0; cruBro < _size; ++cruBro)
                 {
-                    float k = (float)F_MIN + (F_MAX - F_MIN) * (float)cruBro / (float)this->_size;
+                    float k = (float)_boss.F_MIN + (_boss.F_MAX - _boss.F_MIN) * (float)cruBro / (float)this->_size;
                     if (abs(k) < 0.0001)
                         continue;
                     int kekBro = (vs[0] > k) + 2 * (vs[1] > k) + 4 * (vs[2] > k) + 8 * (vs[3] > k);
@@ -106,11 +109,14 @@ private:
 
     void _squareBro(float l, int r, std::array<float, 4> &vals, point p1, point p2, point p3, point p4)
     {
+        float DX = _boss.DX;
+        float DY = _boss.DY;
+
         point n{(p3.x + p4.x) / 2.f, p4.y};
         point w{p1.x, (p1.y + p4.y) / 2.f};
         point e{p2.x, (p2.y + p3.y) / 2.f};
         point s{(p1.x + p2.x) / 2.f, p1.y};
-
+        
         if (r == 1 || r == 14)
         {
             point a = {p1.x, p1.y + DY * abs(l - vals[0]) / abs(vals[0] - vals[3])};

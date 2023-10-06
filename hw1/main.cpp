@@ -5,54 +5,6 @@
 #include "grid.hpp"
 #include "isoline.hpp"
 
-template<size_t N>
-void increaseDetalization(grid_g<N>& g)
-{
-    if (W < 10)
-    {
-        W++;
-    }
-    else
-    {
-        W = MIN(W_LIM, W + 10);
-    }
-    if (H < 10)
-    {
-        H++;
-    }
-    else
-    {
-        H = MIN(H_LIM, H + 10);
-    }
-
-    recalculateDependentParameters();
-    g.reload();
-}
-
-template<size_t N>
-void decreaseDetalization(grid_g<N>& g)
-{
-    if (W <= 10)
-    {
-        W = MAX(1, W - 1);
-    }
-    else
-    {
-        W = MAX(10, W - 10);
-    }
-    if (H <= 10)
-    {
-        H = MAX(1, H - 1);
-    }
-    else
-    {
-        H = MAX(10, H - 10);
-    }
-
-    recalculateDependentParameters();
-    g.reload();
-}
-
 int main()
 try
 {
@@ -93,9 +45,11 @@ try
     if (!GLEW_VERSION_3_3)
         throw std::runtime_error("OpenGL 3.3 is not supported");
 
-    glClearColor(0.f, 0.f, 0.f, 1.f);
-    grid_g<GRID_VERTICES_NUM_LIMIT> real_g;
-    isoline_bro<GRID_VERTICES_NUM_LIMIT, 20> iso_bro(5);
+    glClearColor(0.1f, 0.1f, 0.2f, 1.f);
+    
+    big_boss ceo;
+    grid_g<ceo.GRID_VERTICES_NUM_LIMIT> real_g(ceo);
+    isoline_bro<ceo.GRID_VERTICES_NUM_LIMIT, 20> iso_bro(1, ceo);
 
     auto vertex_shader = create_shader(GL_VERTEX_SHADER, vertex_shader_source);
     auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
@@ -141,10 +95,14 @@ try
                 switch (event.key.keysym.sym)
                 {
                 case SDLK_LEFT:
-                    decreaseDetalization(real_g);
+                    ceo.undoBusiness();
+                    real_g.reload();
+                    // decreaseDetalization(real_g);
                     break;
                 case SDLK_RIGHT:
-                    increaseDetalization(real_g);
+                    ceo.doBusiness();
+                    real_g.reload();
+                    // increaseDetalization(real_g);
                     break;
                 case SDLK_UP:
                     iso_bro.workout();

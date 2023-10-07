@@ -39,7 +39,6 @@ struct big_boss
         {
             H = MIN(H_LIM, H + 10);
         }
-        std::cout << W << std::endl;
         _rule();
     }
 

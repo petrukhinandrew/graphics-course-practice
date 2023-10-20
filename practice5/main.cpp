@@ -38,6 +38,7 @@ const char vertex_shader_source[] =
 
 uniform mat4 viewmodel;
 uniform mat4 projection;
+uniform float time;
 
 layout (location = 0) in vec3 in_position;
 layout (location = 1) in vec3 in_normal;
@@ -50,7 +51,7 @@ void main()
 {
     gl_Position = projection * viewmodel * vec4(in_position, 1.0);
     normal = mat3(viewmodel) * in_normal;
-    texcoord = in_texcoord;
+    texcoord = in_texcoord + vec2(sin(time), cos(time));
 }
 )";
 
@@ -185,7 +186,10 @@ try
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_TRUE, sizeof(obj_data::vertex), (void *)(6 * sizeof(float)));
 
     GLuint tx_loc = glGetUniformLocation(program, "tx");
+    GLuint time_loc = glGetUniformLocation(program, "time");
+
     glUniform1i(tx_loc, 1);
+    glUniform1f(time_loc, 0.f);
 
     const size_t texsize = 512;
     std::array<std::uint32_t, texsize * texsize / 4> pure_red;
@@ -342,6 +346,7 @@ try
         glUniformMatrix4fv(projection_location, 1, GL_TRUE, projection);
         glBindVertexArray(cow_vao);
         glUniform1i(tx_loc, 1);
+        glUniform1f(time_loc, time * 0.1f);
         glBindTexture(GL_TEXTURE_2D, cow_texture);
 
         glDrawElements(GL_TRIANGLES, cow.indices.size(), GL_UNSIGNED_INT, (void *)0);

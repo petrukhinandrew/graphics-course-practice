@@ -119,13 +119,46 @@ void main()
 const char rectangle_fragment_shader_source[] =
 R"(#version 330 core
 
+uniform int mode;
+uniform float time;
+
+uniform sampler2D tx;
 in vec2 texcoord;
 
 layout (location = 0) out vec4 out_color;
 
 void main()
 {
-    out_color = vec4(texcoord, 0.0, 1.0);
+    if (mode == 1) {
+
+        out_color = floor(texture(tx, texcoord) * 4.0) / 3.0;
+
+    } else if (mode == 2) {
+
+        out_color = texture(tx, texcoord + vec2(sin(texcoord.y * 50.0 + time) * 0.01, 0.0));
+
+    } else if (mode == 3) {
+
+        vec4 sum = vec4(0.0);
+        float sum_w = 0.0;
+        const int N = 7;
+        float radius = 5.0;
+        
+        for (int x = -N; x <= N; ++x) {
+            for (int y = -N; y <= N; ++y) {
+                float c = exp(-float(x*x + y*y) / (radius*radius));
+                sum += c * texture(tx, texcoord + vec2(x,y) / vec2(textureSize(tx, 0)));
+                sum_w += c;
+            }
+        }
+        
+        out_color = sum / sum_w;
+
+    } else {
+
+        out_color = texture(tx, texcoord);
+        
+    }
 }
 )";
 
@@ -237,13 +270,38 @@ int main() try
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(obj_data::vertex), (void*)(12));
 
+    GLuint colorbuffer_texture;
+    glGenTextures(1, &colorbuffer_texture);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, colorbuffer_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width / 2, height / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    GLuint renderbuffer;
+    glGenRenderbuffers(1, &renderbuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width / 2, height / 2);
+
+    GLuint framebuffer;
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, colorbuffer_texture, 0);
+    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, renderbuffer, 0);
+
+    assert(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
     auto rectangle_vertex_shader = create_shader(GL_VERTEX_SHADER, rectangle_vertex_shader_source);
     auto rectangle_fragment_shader = create_shader(GL_FRAGMENT_SHADER, rectangle_fragment_shader_source);
     auto rectangle_program = create_program(rectangle_vertex_shader, rectangle_fragment_shader);
 
     GLuint center_location = glGetUniformLocation(rectangle_program, "center");
     GLuint size_location = glGetUniformLocation(rectangle_program, "size");
+    GLuint tx_location = glGetUniformLocation(rectangle_program, "tx");
+    GLuint mode_location = glGetUniformLocation(rectangle_program, "mode");
+    GLuint time_location = glGetUniformLocation(rectangle_program, "time");
 
+    glUniform1i(tx_location, 0);
     GLuint rectangle_vao;
     glGenVertexArrays(1, &rectangle_vao);
 
@@ -257,6 +315,9 @@ int main() try
     float camera_distance = 0.5f;
     float model_angle = glm::pi<float>() / 2.f;
     float model_scale = 1.f;
+    float aspect_ratio = (float)width / (float)height;
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
 
     bool running = true;
     while (running)
@@ -271,7 +332,15 @@ int main() try
             case SDL_WINDOWEVENT_RESIZED:
                 width = event.window.data1;
                 height = event.window.data2;
+                aspect_ratio = (float)width / (float)height;
                 glViewport(0, 0, width, height);
+                
+                glBindTexture(GL_TEXTURE_2D, colorbuffer_texture);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width / 2, height / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+                glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
+                glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width / 2, height / 2);
+
                 break;
             }
             break;
@@ -302,40 +371,60 @@ int main() try
             model_angle += 2.f * dt;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
 
-        float near = 0.1f;
-        float far = 100.f;
+        for (int d = 0; d < 4; ++d) {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+            glViewport(0, 0, width / 2, height / 2);
+            
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glClearColor((d == 0 ? 1.f : 0.f), (d != 3 ? 1.f : 0.f), (d != 2 ? 1.f : 0.f), 0.f);
+            float near = 0.1f;
+            float far = 100.f;
 
-        glm::mat4 model(1.f);
-        model = glm::rotate(model, model_angle, {0.f, 1.f, 0.f});
-        model = glm::scale(model, glm::vec3(model_scale));
+            glm::mat4 model(1.f);
+            model = glm::rotate(model, model_angle, {0.f, 1.f, 0.f});
+            model = glm::scale(model, glm::vec3(model_scale));
 
-        glm::mat4 view(1.f);
-        view = glm::translate(view, {0.f, 0.f, -camera_distance});
-        view = glm::rotate(view, view_angle, {1.f, 0.f, 0.f});
+            glm::mat4 view(1.f);
+            view = glm::translate(view, {0.f, 0.f, -camera_distance});
+            view = glm::rotate(view, view_angle, {1.f, 0.f, 0.f});
 
-        glm::mat4 projection = glm::perspective(glm::pi<float>() / 2.f, (1.f * width) / height, near, far);
+            glm::mat4 projection = glm::perspective(glm::pi<float>() / 2.f, (1.f * width) / height, near, far);
 
-        glm::vec3 camera_position = (glm::inverse(view) * glm::vec4(0.f, 0.f, 0.f, 1.f)).xyz();
+            if (d != 0) {
+                projection = glm::ortho<float>(-aspect_ratio, aspect_ratio, -1.f, 1.f, near, far);
+            }
+            if (d == 1 || d == 3)
+                view = glm::rotate(view, glm::pi<float>() / 2.f, glm::vec3((d == 3 ? 1.f : 0.f), (d == 1 ? 1.f : 0.f), 0.f));
+            
 
-        glUseProgram(dragon_program);
-        glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
-        glUniformMatrix4fv(view_location, 1, GL_FALSE, reinterpret_cast<float *>(&view));
-        glUniformMatrix4fv(projection_location, 1, GL_FALSE, reinterpret_cast<float *>(&projection));
+            glm::vec3 camera_position = (glm::inverse(view) * glm::vec4(0.f, 0.f, 0.f, 1.f)).xyz();
 
-        glUniform3fv(camera_position_location, 1, (float*)(&camera_position));
+            glUseProgram(dragon_program);
+            glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
+            glUniformMatrix4fv(view_location, 1, GL_FALSE, reinterpret_cast<float *>(&view));
+            glUniformMatrix4fv(projection_location, 1, GL_FALSE, reinterpret_cast<float *>(&projection));
 
-        glBindVertexArray(dragon_vao);
-        glDrawElements(GL_TRIANGLES, dragon.indices.size(), GL_UNSIGNED_INT, nullptr);
+            glUniform3fv(camera_position_location, 1, (float*)(&camera_position));
 
-        glUseProgram(rectangle_program);
-        glUniform2f(center_location, -0.5f, -0.5f);
-        glUniform2f(size_location, 0.5f, 0.5f);
-        glBindVertexArray(rectangle_vao);
-//        glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(dragon_vao);
+            glDrawElements(GL_TRIANGLES, dragon.indices.size(), GL_UNSIGNED_INT, nullptr);
+            
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glViewport(0, 0, width, height);
 
+            glUseProgram(rectangle_program);
+            
+            glActiveTexture(GL_TEXTURE0);
+            
+            glUniform1i(mode_location, d);
+            glUniform1f(time_location, time);
+            glUniform2f(center_location, (d < 2 ? -1.f : 1.f) * 0.5f, (d % 2 == 0 ? 1.f : -1.f) * 0.5f);
+            glUniform2f(size_location, 0.5f, 0.5f);
+            
+            glBindVertexArray(rectangle_vao);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        }
         SDL_GL_SwapWindow(window);
     }
 

@@ -333,7 +333,7 @@ int main() try {
         glUniform3f(sun_color_location, 1.0, 0.9, 0.8);
 
         glUniform3f(point_light_position_location, sin(time), 1.f, cos(time));
-        glUniform3f(point_light_color_location, 0.f, 1.f, 1.f);
+        glUniform3f(point_light_color_location, 1.f, 1.f, 1.f);
         glUniform3f(point_light_attenuation_location, 1.f, 0.f, 0.1f);
 
         for (int monkey = 0; monkey < 9; ++monkey) {

@@ -2,9 +2,7 @@
 #include <SDL.h>
 #undef main
 #else
-
 #include <SDL2/SDL.h>
-
 #endif
 
 #include <GL/glew.h>
@@ -67,38 +65,6 @@ void main()
 }
 )";
 
-const char db_vertex_shader_source[] = 
-R"(#version 330 core
-
-const vec2 VERTICES[6] = vec2[6](
-    vec2(-1.0, -1.0),
-    vec2(-0.5, -0.5),
-    vec2(-1.0, -0.5),
-    vec2(-0.5, -0.5),
-    vec2(-1.0, -1.0),
-    vec2(-0.5, -1.0)
-);
-
-out vec2 texcoord;
-
-void main() {
-    gl_Position = vec4(VERTICES[gl_VertexID], 0.0, 1.0);
-    texcoord = -2 * VERTICES[gl_VertexID] - 1.0;
-}
-)";
-const char sm_vertex_shader_source[] = 
-R"(#version 330 core
-
-uniform mat4 smm;
-uniform mat4 smp;
-
-layout (location = 0) in vec3 in_position;
-
-void main() {
-    gl_Position = smp * smm * vec4(in_position, 1.0);
-}
-)";
-
 const char fragment_shader_source[] =
     R"(#version 330 core
 
@@ -143,7 +109,7 @@ void main()
     if (-1 <= ndc.x && ndc.x <= 1 && -1 <= ndc.y && ndc.y <= 1) {
         
         float radius = 5.0;
-        int N = 5;
+        int N = 7;
         float s = 0;
         float s_w = 0;
         
@@ -167,6 +133,26 @@ void main()
 }
 )";
 
+const char db_vertex_shader_source[] = 
+R"(#version 330 core
+
+const vec2 VERTICES[6] = vec2[6](
+    vec2(-1.0, -1.0),
+    vec2(-0.5, -0.5),
+    vec2(-1.0, -0.5),
+    vec2(-0.5, -0.5),
+    vec2(-1.0, -1.0),
+    vec2(-0.5, -1.0)
+);
+
+out vec2 texcoord;
+
+void main() {
+    gl_Position = vec4(VERTICES[gl_VertexID], 0.0, 1.0);
+    texcoord = -2 * VERTICES[gl_VertexID] - 1.0;
+}
+)";
+
 const char db_fragment_shader_source[] = 
 R"(#version 330 core
 
@@ -180,6 +166,20 @@ void main() {
    out_color = vec4(texture(sampler, texcoord).r);
 }
 )";
+
+const char sm_vertex_shader_source[] = 
+R"(#version 330 core
+
+uniform mat4 smm;
+uniform mat4 smp;
+
+layout (location = 0) in vec3 in_position;
+
+void main() {
+    gl_Position = smp * smm * vec4(in_position, 1.0);
+}
+)";
+
 const char sm_fragment_shader_source[] =
 R"(#version 330 core
 void main() { }
@@ -292,6 +292,9 @@ try
     std::string scene_path = project_root + "/buddha.obj";
     obj_data scene = parse_obj(scene_path);
 
+    GLuint db_vao;
+    glGenVertexArrays(1, &db_vao);
+
     GLuint scene_vao, scene_vbo, scene_ebo;
     glGenVertexArrays(1, &scene_vao);
     glBindVertexArray(scene_vao);
@@ -331,11 +334,9 @@ try
     glGenFramebuffers(1, &sm_fb);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sm_fb);
     glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, sm_t, 0);
-    if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
-        std::runtime_error(std::to_string(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)));
+    if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        throw std::runtime_error("Incomplete framebuffer");
     }
-    GLuint db_vao;
-    glGenVertexArrays(1, &db_vao);    
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
@@ -423,12 +424,12 @@ try
 
         glUseProgram(sm_program);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sm_fb);
-        glViewport(0, 0, shadow_map_size, shadow_map_size/aspect);
+        glViewport(0, 0, shadow_map_size, shadow_map_size);
         
         glUniformMatrix4fv(smm_location, 1, GL_FALSE, reinterpret_cast<float*>(&model));
         glUniformMatrix4fv(smp_location, 1, GL_FALSE, reinterpret_cast<float*>(&light_proj));
         
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
         glCullFace(GL_FRONT);
         glEnable(GL_CULL_FACE);
@@ -436,11 +437,10 @@ try
         glBindVertexArray(scene_vao);
         glDrawElements(GL_TRIANGLES, scene.indices.size(), GL_UNSIGNED_INT, nullptr);
         
-        glCullFace(GL_BACK);
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
         glViewport(0, 0, width, height);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(0.8f, 0.8f, 1.f, 0.f);

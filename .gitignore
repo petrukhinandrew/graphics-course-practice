@@ -2,5 +2,6 @@
 */cmake-build-*
 */CMakeLists.txt.user
 .idea
-*/.vscode
+/.vscode
+/build
 /libs

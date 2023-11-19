@@ -28,6 +28,9 @@
 
 #include "obj_parser.hpp"
 
+#define MAX(A, B) A > B ? A : B
+#define MIN(A, B) A > B ? B : A
+
 std::string to_string(std::string_view str)
 {
     return std::string(str.begin(), str.end());
@@ -86,16 +89,31 @@ void main()
     vec4 shadow_pos = transform * vec4(position, 1.0);
     shadow_pos /= shadow_pos.w;
     shadow_pos = shadow_pos * 0.5 + vec4(0.5);
+    
+    vec2 s = vec2(0.0, 0.0);
+    vec2 s_w = vec2(0.0, 0.0);
+    const int N = 7;
+    float radius = 5.0;
+    for (int x = -N; x <= N; ++x) {
+        for (int y = -N; y <= N; ++y) {
+            float c = exp(-float(x * x + y * y) / (radius*radius));
+            s += c * texture(shadow_map, shadow_pos.xy + vec2(x,y) / vec2(textureSize(shadow_map, 0))).rg;
+            s_w += c;
+        }
+    }
 
-    bool in_shadow_texture = (shadow_pos.x > 0.0) && (shadow_pos.x < 1.0) && (shadow_pos.y > 0.0) && (shadow_pos.y < 1.0) && (shadow_pos.z > 0.0) && (shadow_pos.z < 1.0);
-    float shadow_factor = 1.0;
-    if (in_shadow_texture)
-        shadow_factor = (texture(shadow_map, shadow_pos.xy).r < shadow_pos.z) ? 0.0 : 1.0;
-
+    vec2 data = s / s_w;
+    float mu = data.r;
+    float sigma = data.g - mu * mu;
+    float z = shadow_pos.z - 0.001;
+    float factor = (z < mu) ? 1.0 : sigma / (sigma + (z - mu) * (z - mu));
+    float delta = 0.125;
+    float s_factor = (factor < delta) ? 0.0 : (factor - delta) / (1 - delta);
+    
     vec3 albedo = vec3(1.0, 1.0, 1.0);
 
     vec3 light = ambient;
-    light += light_color * max(0.0, dot(normal, light_direction)) * shadow_factor;
+    light += light_color * max(0.0, dot(normal, light_direction)) * s_factor;
     vec3 color = albedo * light;
 
     out_color = vec4(color, 1.0);
@@ -135,7 +153,7 @@ layout (location = 0) out vec4 out_color;
 
 void main()
 {
-    out_color = vec4(texture(shadow_map, texcoord).rrr, 1.0);
+    out_color = vec4(texture(shadow_map, texcoord).rgb, 1.0);
 }
 )";
 
@@ -156,8 +174,15 @@ void main()
 const char shadow_fragment_shader_source[] =
 R"(#version 330 core
 
-void main()
-{}
+out vec4 out_coords;
+
+void main() {
+    float z = gl_FragCoord.z;
+    float g_x = dFdx(z);
+    float g_y = dFdy(z);
+    float bias = 1 / 4 * (g_x * g_x + g_y * g_y);
+    out_coords = vec4(z, z * z + bias, 0, 0);
+}
 )";
 
 GLuint create_shader(GLenum type, const char * source)
@@ -273,6 +298,24 @@ int main() try
     std::string scene_path = project_root + "/bunny.obj";
     obj_data scene = parse_obj(scene_path);
 
+    std::array<std::array<float, 2>, 3> bounding_box;
+    for (size_t i = 0; i < 3; ++i) {
+        bounding_box[i][0] = scene.vertices[0].position[i];
+        bounding_box[i][1] = scene.vertices[0].position[i];
+    }
+
+    glm::vec3 C;
+    for (auto vertex: scene.vertices) {
+        for (int i = 0; i < 3; ++i) {
+            bounding_box[i][0] = MIN(bounding_box[i][0], vertex.position[i]);
+            bounding_box[i][1] = MAX(bounding_box[i][1], vertex.position[i]);
+        }
+    }
+    
+    for (size_t i = 0; i < 3; ++i) {
+        C[i] = (bounding_box[i][0] + bounding_box[i][1]) / 2;
+    }
+
     GLuint vao, vbo, ebo;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
@@ -298,18 +341,25 @@ int main() try
     GLuint shadow_map;
     glGenTextures(1, &shadow_map);
     glBindTexture(GL_TEXTURE_2D, shadow_map);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, shadow_map_resolution, shadow_map_resolution, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, shadow_map_resolution, shadow_map_resolution, 0, GL_RGBA, GL_FLOAT, nullptr);
 
     GLuint shadow_fbo;
     glGenFramebuffers(1, &shadow_fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, shadow_fbo);
-    glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map, 0);
+    glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, shadow_map, 0);
     if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         throw std::runtime_error("Incomplete framebuffer!");
+
+    GLuint render_buffer;
+    glGenRenderbuffers(1, &render_buffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, render_buffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, shadow_map_resolution, shadow_map_resolution);
+    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, render_buffer);
+
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
@@ -375,6 +425,7 @@ int main() try
         glm::vec3 light_direction = glm::normalize(glm::vec3(std::cos(time * 0.5f), 1.f, std::sin(time * 0.5f)));
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, shadow_fbo);
+        glClearColor(1.f, 1.f, 0.f, 0.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, shadow_map_resolution, shadow_map_resolution);
 
@@ -387,15 +438,41 @@ int main() try
         glm::vec3 light_z = -light_direction;
         glm::vec3 light_x = glm::normalize(glm::cross(light_z, {0.f, 1.f, 0.f}));
         glm::vec3 light_y = glm::cross(light_x, light_z);
-        float shadow_scale = 2.f;
-
-        glm::mat4 transform = glm::mat4(1.f);
-        for (size_t i = 0; i < 3; ++i)
-        {
-            transform[i][0] = shadow_scale * light_x[i];
-            transform[i][1] = shadow_scale * light_y[i];
-            transform[i][2] = shadow_scale * light_z[i];
+        float shadow_scale_x = 0;
+        float shadow_scale_y = 0;
+        float shadow_scale_z = 0;
+        for (auto x: bounding_box[0]) {
+            for (auto y: bounding_box[1]) {
+                for (auto z: bounding_box[2]) {
+                    glm::vec3 V(x, y, z);
+                    shadow_scale_x = MAX(shadow_scale_x, abs(glm::dot(V - C, light_x)));                    
+                    shadow_scale_y = MAX(shadow_scale_y, abs(glm::dot(V - C, light_y)));
+                    shadow_scale_z = MAX(shadow_scale_z, abs(glm::dot(V - C, light_z)));                    
+                }
+            }
         }
+        glm::mat4 scale = glm::mat4( 
+            1/shadow_scale_x,          0,                0,                0,
+            0,                         1/shadow_scale_y, 0,                0,
+            0,                         0,                1/shadow_scale_z, 0,
+            0,                         0,                0,                1
+        );
+        glm::mat4 rotate = glm::transpose(
+            glm::mat4(
+                glm::vec4(light_x,      0),
+                glm::vec4(light_y,      0),
+                glm::vec4(light_z,      0),
+                glm::vec4(glm::vec3(0), 1))
+            );
+
+        glm::mat4 shift = glm::mat4(
+            1,      0,     0,    0,
+            0,      1,     0,    0,
+            0,      0,     1,    0,
+            -C[0], -C[1], -C[2], 1
+        );
+
+        glm::mat4 transform = scale * rotate * shift;
 
         glUseProgram(shadow_program);
         glUniformMatrix4fv(shadow_model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));

@@ -3,4 +3,5 @@
 */CMakeLists.txt.user
 .idea
 */.vscode
+/.vscode
 /libs

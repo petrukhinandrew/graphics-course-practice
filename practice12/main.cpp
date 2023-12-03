@@ -72,6 +72,7 @@ uniform vec3 camera_position;
 uniform vec3 light_direction;
 uniform vec3 bbox_min;
 uniform vec3 bbox_max;
+uniform sampler3D sampler;
 
 layout (location = 0) out vec4 out_color;
 
@@ -107,13 +108,58 @@ vec2 intersect_bbox(vec3 origin, vec3 direction)
     return vec2(vmax(tmin), vmin(tmax));
 }
 
+vec3 as_texcoord(vec3 v) {
+    return (v - bbox_min) / (bbox_max - bbox_min);
+}
+
 const float PI = 3.1415926535;
 
 in vec3 position;
 
 void main()
 {
-    out_color = vec4(1.0, 0.5, 0.5, 1.0);
+    vec3 absorption = vec3(1.0);
+    vec3 scattering = vec3(4.0, 1.0, 10.0);
+    vec3 extinction = absorption + scattering;
+    vec3 light_color = vec3(16.0);
+    vec3 color = vec3(0.0);
+    vec3 optical_depth = vec3(0);
+
+    vec3 d = normalize(position - camera_position);
+    vec2 tmintmax = intersect_bbox(camera_position, d);
+    float tmin = max(0, tmintmax.x);
+    float tmax = tmintmax.y;
+    
+    int N = 64;
+    float dt = (tmax - tmin) / N;
+    vec3 color_c = light_color * scattering /4.0 / PI;
+    for (int i = 0; i < N; ++i) {        
+        float t = tmin + (i + 0.5) * dt;
+        vec3 p = camera_position + t * d;
+        vec3 texcoords = as_texcoord(p);
+        float density = texture(sampler, texcoords).r;
+        optical_depth += extinction * density * dt;
+        
+        vec2 l_tmintmax = intersect_bbox(p, light_direction);
+        float l_tmin = max(0.0, l_tmintmax.x);
+        float l_tmax = l_tmintmax.y;
+        vec3 l_optical_depth = vec3(0.0);
+
+        int l_N = 16;
+        float l_dt = (l_tmax - l_tmin) / l_N;
+
+        for (int l_i = 0; l_i < l_N; ++l_i) {
+            float l_t = l_tmin + (l_i + 0.5) * l_dt;
+            vec3 l_texcoords = as_texcoord(p + l_t * light_direction);
+            float l_density = texture(sampler, l_texcoords).r;
+
+            l_optical_depth += extinction * l_density * l_dt;
+        }
+
+        color += exp(-l_optical_depth) * exp(-optical_depth) * dt * density * color_c;
+    }
+    
+    out_color = vec4(color, 1.0);
 }
 )";
 
@@ -236,6 +282,7 @@ int main() try
     GLuint bbox_max_location = glGetUniformLocation(program, "bbox_max");
     GLuint camera_position_location = glGetUniformLocation(program, "camera_position");
     GLuint light_direction_location = glGetUniformLocation(program, "light_direction");
+    GLuint sampler_location = glGetUniformLocation(program, "sampler");
 
     GLuint vao, vbo, ebo;
     glGenVertexArrays(1, &vao);
@@ -257,6 +304,21 @@ int main() try
 
     const glm::vec3 cloud_bbox_min{-2.f, -1.f, -1.f};
     const glm::vec3 cloud_bbox_max{ 2.f,  1.f,  1.f};
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_3D, texture);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri( GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri( GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri( GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    std::vector<char> pixels(128 * 64 * 64);
+    std::ifstream input(cloud_data_path, std::ios::binary);
+    input.read(pixels.data(), pixels.size());
+
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8, 128, 64, 64, 0, GL_RED, GL_UNSIGNED_BYTE, pixels.data());
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
@@ -323,7 +385,7 @@ int main() try
         if (button_down[SDLK_s])
             view_angle += 2.f * dt;
 
-        glClearColor(0.8f, 0.8f, 0.9f, 0.f);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glEnable(GL_DEPTH_TEST);
@@ -357,6 +419,7 @@ int main() try
         glUniform3fv(bbox_max_location, 1, reinterpret_cast<const float *>(&cloud_bbox_max));
         glUniform3fv(camera_position_location, 1, reinterpret_cast<float *>(&camera_position));
         glUniform3fv(light_direction_location, 1, reinterpret_cast<float *>(&light_direction));
+        glUniform1i(sampler_location, 0);
 
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, std::size(cube_indices), GL_UNSIGNED_INT, nullptr);

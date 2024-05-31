@@ -16,6 +16,25 @@
 
 #include "obj_parser.hpp"
 
+#define MODEL0 \
+    cos(angle) * scale,    -sin(angle) * scale,    0.f,       bsx[0], \
+    sin(angle) * scale,     cos(angle) * scale,    0.f,       bsy[0],\
+    0.f ,                   0.f,                   scale,     0.f, \
+    0.f ,                   0.f,                   0.f,       1.f
+    
+
+#define MODEL1 \
+    cos(angle) * scale,     0.f,       -sin(angle) * scale,    bsx[1], \
+    0.f,                    scale,      0.f,                    bsy[1],\
+    sin(angle) * scale,     0.f,        cos(angle) * scale,     0.f, \
+    0.f,                    0.f,        0.f,                    1.f
+
+#define MODEL2 \
+    scale,   0.f,                    0.f,                        bsx[2], \
+    0.f,     cos(angle) * scale,    -sin(angle) * scale,         bsy[2],\
+    0.f ,    sin(angle) * scale,     cos(angle) * scale,         0.f, \
+    0.f ,    0.f,                    0.f,                        1.f
+
 std::string to_string(std::string_view str)
 {
     return std::string(str.begin(), str.end());
@@ -169,10 +188,44 @@ int main() try
 
     std::string project_root = PROJECT_ROOT;
     obj_data bunny = parse_obj(project_root + "/bunny.obj");
+    
+    glEnable(GL_DEPTH_TEST);
+
+    GLuint bunny_vao, bunny_vbo, bunny_ebo;
+    
+    glGenVertexArrays(1, &bunny_vao);
+    glBindVertexArray(bunny_vao);
+
+    glGenBuffers(1, &bunny_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, bunny_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(obj_data::vertex) * bunny.vertices.size(), bunny.vertices.data(), GL_STATIC_DRAW);
+
+    glGenBuffers(1, &bunny_ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bunny_ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(std::uint32_t) * bunny.indices.size(), bunny.indices.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_TRUE, sizeof(obj_data::vertex), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(obj_data::vertex), (void*)(3 * sizeof(float)));
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
     float time = 0.f;
+    float scale = 0.4f;
+    float angle = 0.f;
+    float near = 0.001f;
+    float right = near;
+    float top = right / 16 * 9;
+    float far = 1000.0f;
+    float speed = 1.f;
+    float bunny_x = 0.f;
+    float bunny_y = 0.f;
+    float dt = 0.f;
+    
+    int bptr = 0;
+    float bsx[3] = {-0.6f, 0.f, 0.6f};
+    float bsy[3] = {-0.6f, 0.f, 0.6f};
 
     std::map<SDL_Keycode, bool> button_down;
 
@@ -195,6 +248,21 @@ int main() try
             break;
         case SDL_KEYDOWN:
             button_down[event.key.keysym.sym] = true;
+            if (event.key.keysym.sym == SDLK_LEFT) {
+                bsx[bptr] -= speed * dt;
+            } else if (event.key.keysym.sym == SDLK_RIGHT) {
+                bsx[bptr] += speed * dt;
+            } else if (event.key.keysym.sym == SDLK_UP) {
+                bsy[bptr] += speed * dt;
+            } else if (event.key.keysym.sym == SDLK_DOWN) {
+                bsy[bptr] -= speed * dt;
+            } else if (event.key.keysym.sym == SDLK_1) {
+                bptr = 0;
+            } else if (event.key.keysym.sym == SDLK_2) {
+                bptr = 1;
+            } else if (event.key.keysym.sym == SDLK_3) {
+                bptr = 2;
+            }
             break;
         case SDL_KEYUP:
             button_down[event.key.keysym.sym] = false;
@@ -205,41 +273,53 @@ int main() try
             break;
 
         auto now = std::chrono::high_resolution_clock::now();
-        float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
+        dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
         last_frame_start = now;
         time += dt;
-
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        float model[16] =
-        {
-            1.f, 0.f, 0.f, 0.f,
-            0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
-            0.f, 0.f, 0.f, 1.f,
-        };
-
+        float angle = time;
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        glUseProgram(program);
         float view[16] =
         {
             1.f, 0.f, 0.f, 0.f,
             0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
+            0.f, 0.f, 1.f, -3.f,
             0.f, 0.f, 0.f, 1.f,
         };
 
         float projection[16] =
         {
-            1.f, 0.f, 0.f, 0.f,
-            0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
-            0.f, 0.f, 0.f, 1.f,
+            near / right, 0.f, 0.f, 0.f,
+            0.f, near / top, 0.f, 0.f,
+            0.f, 0.f, (far + near) / (near - far), (2 * far * near) / (near - far),
+            0.f, 0.f, -1.f, 0.f,
         };
-
-        glUseProgram(program);
-        glUniformMatrix4fv(model_location, 1, GL_TRUE, model);
         glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
         glUniformMatrix4fv(projection_location, 1, GL_TRUE, projection);
-
+        
+        for (int i = 0; i < 3; ++ i) {
+            std::array<float, 16> model;
+            if (i == 0) {
+                model = {MODEL0};
+            }  else if (i == 1) {
+                model = {MODEL1};
+            } else {
+                model = {MODEL2};
+            }
+            // float model[16] =
+            // {
+            //     i != 2 ? scale * cos(angle) : scale, i != 0 ? 0.f : -sin(angle) * scale,  i == 1 ? -sin(angle) * scale : 0.f,  bsx[i],
+            //     i != 0 ? 0.f : sin(angle) * scale,   i != 1 ? scale * cos(angle) : scale, i == 2 ? -sin(angle) * scale : 0.f,  bsy[i],
+            //     i != 1 ? 0.f : sin(angle) * scale,   i == 2 ? sin(angle) * scale : 0.f,   i != 1 ? scale * cos(angle) : scale, 0.f,
+            //     0.f,                                 0.f,                                 0.f,                                 1.f,
+            // };
+            
+            glUniformMatrix4fv(model_location, 1, GL_TRUE, model.data());  
+            
+            glBindVertexArray(bunny_vao);
+            glDrawElements(GL_TRIANGLES, bunny.indices.size(), GL_UNSIGNED_INT, (void*)0);
+        }
         SDL_GL_SwapWindow(window);
     }
 
